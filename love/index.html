@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>蝴蝶爱心粒子动画</title>
+    <title>蝴蝶音乐爱心粒子动画</title>
 
     <style>
         body {
@@ -11,7 +11,7 @@
             overflow: hidden;
             background: radial-gradient(circle at center, #1a0712 0%, #050505 65%, #000 100%);
             cursor: pointer;
-            font-family: Arial, sans-serif;
+            font-family: Arial, "Microsoft YaHei", sans-serif;
         }
 
         #text-tip {
@@ -57,12 +57,13 @@
 <div id="text-tip">点击开始，蝴蝶会跟随音乐飞 20 秒</div>
 <button id="start-btn">点击开始</button>
 
-<audio id="bgm" src="./M500000XeCbZ1UUyUY.mp3" preload="auto"></audio>
+<audio id="bgm" preload="auto" playsinline></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 
 <script>
+    const MUSIC_URL = './M500000XeCbZ1UUyUY.mp3';
     const INTRO_SECONDS = 20;
     const PARTICLE_COUNT = 4200;
     const SPHERE_RADIUS = 15;
@@ -87,10 +88,13 @@
     document.body.appendChild(renderer.domElement);
 
     const bgm = document.getElementById('bgm');
+    bgm.src = MUSIC_URL;
+    bgm.crossOrigin = 'anonymous';
 
     let audioContext;
     let analyser;
     let frequencyData;
+    let mediaSource;
 
     let musicEnergy = 0;
     let bassEnergy = 0;
@@ -100,15 +104,14 @@
         if (audioContext) return;
 
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-        const source = audioContext.createMediaElementSource(bgm);
+        mediaSource = audioContext.createMediaElementSource(bgm);
 
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
 
         frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
-        source.connect(analyser);
+        mediaSource.connect(analyser);
         analyser.connect(audioContext.destination);
     }
 
@@ -191,36 +194,40 @@
         return p;
     }
 
-    function getButterflyHeartPath(time) {
-        const trackTime = 5;
-        const trackIndex = Math.floor(time / trackTime) % 4;
+    const butterflyFlightCurve = new THREE.CatmullRomCurve3(
+        [
+            new THREE.Vector3(-21, -3, 4),
+            new THREE.Vector3(-14, 10, -8),
+            new THREE.Vector3(-3, 14, 3),
+            new THREE.Vector3(12, 8, 9),
+            new THREE.Vector3(21, -2, -4),
+            new THREE.Vector3(11, -13, 7),
+            new THREE.Vector3(-4, -11, -9),
+            new THREE.Vector3(-18, -5, -2)
+        ],
+        true,
+        'centripetal',
+        0.72
+    );
 
-        const musicSpeed = 1 + musicEnergy * 1.2 + bassEnergy * 0.8;
-        const t = time * 1.25 * musicSpeed + trackIndex * 0.9;
+    function getButterflyFlightPoint(time) {
+        const speed = 0.038 + musicEnergy * 0.012 + bassEnergy * 0.01;
+        const progress = (time * speed) % 1;
+        const p = butterflyFlightCurve.getPointAt(progress);
 
-        const scales = [0.72, 0.9, 1.08, 0.82];
-        const zOffsets = [-5, 3.5, 0, 6];
-        const rotations = [-0.35, 0.28, 0.58, -0.55];
+        const driftTime = time * 0.9;
+        const lift = Math.sin(driftTime * 1.7) * (1.2 + bassEnergy * 1.8);
+        const sideSway = Math.sin(driftTime * 2.35 + 0.7) * (0.7 + trebleEnergy * 1.2);
 
-        let p = heart2D(t);
-
-        const pulseScale = 1 + bassEnergy * 0.35;
-
-        p.x *= scales[trackIndex] * pulseScale;
-        p.y *= scales[trackIndex] * pulseScale;
-
-        p.z = Math.sin(t * 2.2) * (4 + musicEnergy * 8) + zOffsets[trackIndex];
-
-        const angle = rotations[trackIndex];
-
-        const x = p.x * Math.cos(angle) - p.z * Math.sin(angle);
-        const z = p.x * Math.sin(angle) + p.z * Math.cos(angle);
-
-        p.x = x;
-        p.z = z;
-        p.y -= 1.5;
+        p.x += sideSway;
+        p.y += lift;
+        p.z += Math.cos(driftTime * 1.25) * (1.4 + musicEnergy * 2.5);
 
         return p;
+    }
+
+    function getButterflyForwardPoint(time) {
+        return getButterflyFlightPoint(time + 0.18);
     }
 
     const particleGeometry = new THREE.BufferGeometry();
@@ -284,6 +291,55 @@
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     particles.visible = false;
     scene.add(particles);
+
+    const trailCount = 90;
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailPositions = new Float32Array(trailCount * 3);
+
+    for (let i = 0; i < trailPositions.length; i++) {
+        trailPositions[i] = 0;
+    }
+
+    trailGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(trailPositions, 3)
+    );
+
+    const trailMaterial = new THREE.PointsMaterial({
+        size: 0.22,
+        color: 0xff9ad5,
+        transparent: true,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    const butterflyTrail = new THREE.Points(trailGeometry, trailMaterial);
+    butterflyTrail.visible = false;
+    scene.add(butterflyTrail);
+
+    function resetButterflyTrail(point) {
+        for (let i = 0; i < trailCount; i++) {
+            trailPositions[i * 3] = point.x;
+            trailPositions[i * 3 + 1] = point.y;
+            trailPositions[i * 3 + 2] = point.z;
+        }
+        trailGeometry.attributes.position.needsUpdate = true;
+    }
+
+    function updateButterflyTrail(point) {
+        for (let i = trailCount - 1; i > 0; i--) {
+            trailPositions[i * 3] = trailPositions[(i - 1) * 3];
+            trailPositions[i * 3 + 1] = trailPositions[(i - 1) * 3 + 1];
+            trailPositions[i * 3 + 2] = trailPositions[(i - 1) * 3 + 2];
+        }
+
+        trailPositions[0] = point.x;
+        trailPositions[1] = point.y;
+        trailPositions[2] = point.z;
+        trailGeometry.attributes.position.needsUpdate = true;
+        trailMaterial.opacity = 0.34 + musicEnergy * 0.22;
+    }
 
     const butterfly = new THREE.Group();
 
@@ -355,27 +411,50 @@
     const textTip = document.getElementById('text-tip');
     const startBtn = document.getElementById('start-btn');
 
+    bgm.addEventListener('error', function () {
+        if (state === 'waiting') {
+            textTip.innerText = '没有找到音乐文件：请把 M500000XeCbZ1UUyUY.mp3 和这个 HTML 放在 GitHub 同一目录';
+        }
+    });
+
     startBtn.addEventListener('click', async function (event) {
         event.stopPropagation();
 
-        startBtn.style.display = 'none';
-        textTip.innerText = '蝴蝶正在跟随音乐飞行...';
+        startBtn.disabled = true;
+        startBtn.innerText = '正在加载...';
+        textTip.innerText = '正在加载音乐...';
 
         initAudioAnalyzer();
 
         try {
             await audioContext.resume();
+            bgm.currentTime = 0;
             await bgm.play();
         } catch (e) {
-            textTip.innerText = '音乐播放失败，请再点击一次屏幕';
+            startBtn.disabled = false;
+            startBtn.innerText = '再点一次';
+            textTip.innerText = '音乐播放失败。请确认 mp3 已上传到 GitHub，并且路径就是 ./M500000XeCbZ1UUyUY.mp3';
+            return;
         }
+
+        startBtn.style.display = 'none';
+        textTip.innerText = '蝴蝶正在跟随音乐飞行...';
 
         state = 'intro';
         introStartTime = performance.now();
         hasFormedSphere = false;
 
+        bodyMaterial.opacity = 0.95;
+        wingMaterialLeft.opacity = 0.72;
+        wingMaterialRight.opacity = 0.72;
+        butterfly.scale.set(1.25, 1.25, 1.25);
         butterfly.visible = true;
+        butterflyTrail.visible = true;
         particles.visible = false;
+
+        const startPoint = getButterflyFlightPoint(0);
+        previousButterflyPosition.copy(startPoint);
+        resetButterflyTrail(startPoint);
     });
 
     function formSphereFromButterfly() {
@@ -384,7 +463,7 @@
         hasFormedSphere = true;
         state = 'formingSphere';
 
-        textTip.innerText = '蝴蝶变成了发光大球，点击它爆炸成爱心';
+            textTip.innerText = '点我宝宝';
 
         const p = butterfly.position;
 
@@ -412,6 +491,7 @@
             ease: "power2.in",
             onComplete: function () {
                 butterfly.visible = false;
+                butterflyTrail.visible = false;
                 state = 'sphere';
             }
         });
@@ -473,9 +553,9 @@
             state = nextState;
 
             if (state === 'heart') {
-                textTip.innerText = '再次点击，恢复成发光大球';
+                textTip.innerText = '点我宝宝';
             } else {
-                textTip.innerText = '点击大球，爆炸成爱心';
+                textTip.innerText = '点我宝宝';
             }
 
             textTip.style.opacity = '1';
@@ -502,17 +582,22 @@
         stars.rotation.x += 0.0003;
 
         if (state === 'intro') {
-            const pathPoint = getButterflyHeartPath(elapsed);
+            const pathPoint = getButterflyFlightPoint(elapsed);
+            const forwardPoint = getButterflyForwardPoint(elapsed);
 
             butterfly.position.copy(pathPoint);
+            updateButterflyTrail(pathPoint);
 
-            const dx = pathPoint.x - previousButterflyPosition.x;
-            const dy = pathPoint.y - previousButterflyPosition.y;
+            const dx = forwardPoint.x - pathPoint.x;
+            const dy = forwardPoint.y - pathPoint.y;
+            const dz = forwardPoint.z - pathPoint.z;
             const angle = Math.atan2(dy, dx);
+            const bank = THREE.MathUtils.clamp((pathPoint.x - previousButterflyPosition.x) * -0.11, -0.62, 0.62);
+            const climb = THREE.MathUtils.clamp(dz * 0.08, -0.28, 0.28);
 
             butterfly.rotation.z = angle - Math.PI / 2;
-            butterfly.rotation.y = Math.sin(elapsed * 1.4) * 0.45;
-            butterfly.rotation.x = Math.sin(elapsed * 1.1) * 0.18;
+            butterfly.rotation.y = Math.sin(elapsed * 1.4) * 0.28 + bank;
+            butterfly.rotation.x = Math.sin(elapsed * 1.1) * 0.12 + climb;
 
             previousButterflyPosition.copy(pathPoint);
 
