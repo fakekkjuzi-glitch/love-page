@@ -194,6 +194,54 @@
         return p;
     }
 
+    function createLoveYouPixelPool() {
+        const canvas = document.createElement('canvas');
+        const width = 900;
+        const height = 360;
+        const gap = 4;
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '900 132px Arial, sans-serif';
+        ctx.fillText('LOVE', width / 2, height * 0.34);
+        ctx.fillText('YOU', width / 2, height * 0.72);
+
+        const pixels = [];
+        const data = ctx.getImageData(0, 0, width, height).data;
+
+        for (let y = 0; y < height; y += gap) {
+            for (let x = 0; x < width; x += gap) {
+                const alpha = data[(y * width + x) * 4 + 3];
+
+                if (alpha > 40) {
+                    pixels.push({ x, y });
+                }
+            }
+        }
+
+        return { pixels, width, height };
+    }
+
+    const loveYouPixelPool = createLoveYouPixelPool();
+
+    function getLoveYouParticlePoint() {
+        const pool = loveYouPixelPool;
+        const pixel = pool.pixels[Math.floor(Math.random() * pool.pixels.length)];
+        const scale = 0.045;
+
+        return new THREE.Vector3(
+            (pixel.x - pool.width / 2) * scale + (Math.random() - 0.5) * 0.34,
+            (pool.height / 2 - pixel.y) * scale - 1.2 + (Math.random() - 0.5) * 0.34,
+            (Math.random() - 0.5) * 5.5
+        );
+    }
+
     const butterflyFlightCurve = new THREE.CatmullRomCurve3(
         [
             new THREE.Vector3(-21, -3, 4),
@@ -236,6 +284,7 @@
 
     const spherePoints = [];
     const heartPoints = [];
+    const loveYouPoints = [];
     const currentPoints = [];
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -249,6 +298,7 @@
 
         spherePoints.push(new THREE.Vector3(sx, sy, sz));
         heartPoints.push(getHeartParticlePoint());
+        loveYouPoints.push(getLoveYouParticlePoint());
 
         const startX = (Math.random() - 0.5) * 1;
         const startY = (Math.random() - 0.5) * 1;
@@ -513,7 +563,7 @@
     }
 
     function explodeToShape(targetShape, nextState) {
-        if (state !== 'sphere' && state !== 'heart') return;
+        if (state !== 'sphere' && state !== 'heart' && state !== 'loveText') return;
 
         state = 'animating';
         textTip.style.opacity = '0';
@@ -539,7 +589,7 @@
             });
         }
 
-        if (nextState === 'heart') {
+        if (nextState === 'heart' || nextState === 'loveText') {
             gsap.to(particles.rotation, {
                 x: 0,
                 y: 0,
@@ -564,8 +614,9 @@
 
     window.addEventListener('click', function () {
         if (state === 'sphere') {
-            explodeToShape(heartPoints, 'heart');
-        } else if (state === 'heart') {
+            const showHeart = Math.random() < 0.5;
+            explodeToShape(showHeart ? heartPoints : loveYouPoints, showHeart ? 'heart' : 'loveText');
+        } else if (state === 'heart' || state === 'loveText') {
             explodeToShape(spherePoints, 'sphere');
         }
     });
@@ -632,8 +683,14 @@
 
             const pulse = bassEnergy * 0.01;
 
-            particles.rotation.y += 0.003 + pulse;
-            particles.rotation.z += 0.001 + pulse * 0.5;
+            if (state === 'loveText') {
+                particles.rotation.x += (0 - particles.rotation.x) * 0.05;
+                particles.rotation.y += (0 - particles.rotation.y) * 0.05;
+                particles.rotation.z += (0 - particles.rotation.z) * 0.05;
+            } else {
+                particles.rotation.y += 0.003 + pulse;
+                particles.rotation.z += 0.001 + pulse * 0.5;
+            }
         }
 
         renderer.render(scene, camera);
