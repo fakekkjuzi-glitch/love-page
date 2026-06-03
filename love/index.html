@@ -54,7 +54,7 @@
 
 <body>
 
-<div id="text-tip">点击开始，蝴蝶会跟随音乐飞 20 秒</div>
+<div id="text-tip"></div>
 <button id="start-btn">点击开始</button>
 
 <audio id="bgm" preload="auto" playsinline></audio>
@@ -438,7 +438,7 @@
         }
 
         startBtn.style.display = 'none';
-        textTip.innerText = '蝴蝶正在跟随音乐飞行...';
+        textTip.innerText = '';
 
         state = 'intro';
         introStartTime = performance.now();
