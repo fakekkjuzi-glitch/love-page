@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>蝴蝶爱心粒子动画</title>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1a0712 0%, #050505 65%, #000 100%);
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+        }
+
+        #text-tip {
+            position: absolute;
+            top: 10%;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 1.15rem;
+            letter-spacing: 2px;
+            pointer-events: none;
+            user-select: none;
+            transition: opacity 0.6s;
+            z-index: 5;
+        }
+
+        #start-btn {
+            position: absolute;
+            left: 50%;
+            top: 55%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            padding: 14px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 999px;
+            background: rgba(255, 80, 150, 0.25);
+            color: white;
+            font-size: 1rem;
+            letter-spacing: 2px;
+            backdrop-filter: blur(8px);
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(255, 60, 150, 0.4);
+        }
+
+        #start-btn:hover {
+            background: rgba(255, 80, 150, 0.42);
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="text-tip">点击开始，蝴蝶会飞 20 秒</div>
+<button id="start-btn">点击开始</button>
+
+<!-- 
+    音乐以后可以加这里：
+    <audio id="bgm" src="love.mp3" preload="auto"></audio>
+-->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+<script>
+    // =========================
+    // 参数设置
+    // =========================
+    const INTRO_SECONDS = 20;       // 蝴蝶飞行时间：20秒
+    const PARTICLE_COUNT = 4200;    // 粒子数量
+    const SPHERE_RADIUS = 15;       // 大球半径
+
+    // =========================
+    // 初始化场景
+    // =========================
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+    );
+    camera.position.z = 42;
+
+    const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true
+    });
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // =========================
+    // 背景星点
+    // =========================
+    const starGeometry = new THREE.BufferGeometry();
+    const starCount = 1000;
+    const starPositions = new Float32Array(starCount * 3);
+
+    for (let i = 0; i < starCount; i++) {
+        starPositions[i * 3] = (Math.random() - 0.5) * 140;
+        starPositions[i * 3 + 1] = (Math.random() - 0.5) * 90;
+        starPositions[i * 3 + 2] = (Math.random() - 0.5) * 140;
+    }
+
+    starGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(starPositions, 3)
+    );
+
+    const starMaterial = new THREE.PointsMaterial({
+        size: 0.08,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.5
+    });
+
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    // =========================
+    // 爱心公式
+    // =========================
+    function heart2D(t) {
+        const x = 16 * Math.pow(Math.sin(t), 3);
+        const y =
+            13 * Math.cos(t) -
+            5 * Math.cos(2 * t) -
+            2 * Math.cos(3 * t) -
+            Math.cos(4 * t);
+
+        return new THREE.Vector3(x, y, 0);
+    }
+
+    function getHeartParticlePoint() {
+        const t = Math.random() * Math.PI * 2;
+        const fill = 0.45 + Math.pow(Math.random(), 0.55) * 0.65;
+        const p = heart2D(t);
+
+        p.x *= 1.35 * fill;
+        p.y *= 1.35 * fill;
+        p.z = (Math.random() - 0.5) * 13;
+
+        p.x += (Math.random() - 0.5) * 1.4;
+        p.y += (Math.random() - 0.5) * 1.4;
+        p.z += (Math.random() - 0.5) * 1.4;
+
+        return p;
+    }
+
+    // 蝴蝶沿不同爱心轨道飞
+    function getButterflyHeartPath(time) {
+        const trackTime = 5;
+        const trackIndex = Math.floor(time / trackTime) % 4;
+
+        const t = time * 1.35 + trackIndex * 0.9;
+
+        const scales = [0.72, 0.9, 1.08, 0.82];
+        const zOffsets = [-5, 3.5, 0, 6];
+        const rotations = [-0.35, 0.28, 0.58, -0.55];
+
+        let p = heart2D(t);
+
+        p.x *= scales[trackIndex];
+        p.y *= scales[trackIndex];
+
+        p.z = Math.sin(t * 2.2) * 4 + zOffsets[trackIndex];
+
+        const angle = rotations[trackIndex];
+
+        const x = p.x * Math.cos(angle) - p.z * Math.sin(angle);
+        const z = p.x * Math.sin(angle) + p.z * Math.cos(angle);
+
+        p.x = x;
+        p.z = z;
+        p.y -= 1.5;
+
+        return p;
+    }
+
+    // =========================
+    // 粒子系统
+    // =========================
+    const particleGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+
+    const spherePoints = [];
+    const heartPoints = [];
+    const currentPoints = [];
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        // 球体坐标
+        const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
+        const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi;
+        const r = SPHERE_RADIUS;
+
+        const sx = r * Math.cos(theta) * Math.sin(phi);
+        const sy = r * Math.sin(theta) * Math.sin(phi);
+        const sz = r * Math.cos(phi);
+
+        spherePoints.push(new THREE.Vector3(sx, sy, sz));
+
+        // 爱心坐标
+        heartPoints.push(getHeartParticlePoint());
+
+        // 初始粒子藏在中心
+        const startX = (Math.random() - 0.5) * 1;
+        const startY = (Math.random() - 0.5) * 1;
+        const startZ = (Math.random() - 0.5) * 1;
+
+        currentPoints.push({
+            x: startX,
+            y: startY,
+            z: startZ
+        });
+
+        positions[i * 3] = startX;
+        positions[i * 3 + 1] = startY;
+        positions[i * 3 + 2] = startZ;
+
+        // 粉红、紫红粒子颜色
+        colors[i * 3] = 1.0;
+        colors[i * 3 + 1] = Math.random() * 0.25;
+        colors[i * 3 + 2] = 0.45 + Math.random() * 0.45;
+    }
+
+    particleGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(positions, 3)
+    );
+
+    particleGeometry.setAttribute(
+        'color',
+        new THREE.BufferAttribute(colors, 3)
+    );
+
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 0.38,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.88,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    particles.visible = false;
+    scene.add(particles);
+
+    // =========================
+    // 蝴蝶模型
+    // =========================
+    const butterfly = new THREE.Group();
+
+    const bodyMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95
+    });
+
+    const wingMaterialLeft = new THREE.MeshBasicMaterial({
+        color: 0xff4fa3,
+        transparent: true,
+        opacity: 0.72,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
+    });
+
+    const wingMaterialRight = new THREE.MeshBasicMaterial({
+        color: 0xb56cff,
+        transparent: true,
+        opacity: 0.72,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
+    });
+
+    const body = new THREE.Mesh(
+        new THREE.SphereGeometry(0.45, 24, 24),
+        bodyMaterial
+    );
+
+    body.scale.set(0.55, 1.6, 0.55);
+    butterfly.add(body);
+
+    const wingGeometry = new THREE.CircleGeometry(1.15, 32);
+
+    const leftWing = new THREE.Mesh(wingGeometry, wingMaterialLeft);
+    const rightWing = new THREE.Mesh(wingGeometry, wingMaterialRight);
+
+    leftWing.scale.set(1.15, 1.65, 1);
+    rightWing.scale.set(1.15, 1.65, 1);
+
+    leftWing.position.set(-0.9, 0.15, 0);
+    rightWing.position.set(0.9, 0.15, 0);
+
+    butterfly.add(leftWing);
+    butterfly.add(rightWing);
+
+    const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.35, 24, 24),
+        new THREE.MeshBasicMaterial({
+            color: 0xffb6e6,
+            transparent: true,
+            opacity: 0.75,
+            blending: THREE.AdditiveBlending
+        })
+    );
+
+    butterfly.add(glow);
+
+    butterfly.scale.set(1.25, 1.25, 1.25);
+    butterfly.visible = false;
+    scene.add(butterfly);
+
+    // =========================
+    // 状态控制
+    // =========================
+    let state = 'waiting';
+    let isHeart = false;
+    let introStartTime = 0;
+    let hasFormedSphere = false;
+
+    let previousButterflyPosition = new THREE.Vector3();
+
+    const textTip = document.getElementById('text-tip');
+    const startBtn = document.getElementById('start-btn');
+
+    startBtn.addEventListener('click', function (event) {
+        event.stopPropagation();
+
+        startBtn.style.display = 'none';
+        textTip.innerText = '蝴蝶正在沿着爱心轨道飞行...';
+
+        // 以后加音乐时，可以在这里播放：
+        // const bgm = document.getElementById('bgm');
+        // bgm.play();
+
+        state = 'intro';
+        introStartTime = performance.now();
+        hasFormedSphere = false;
+
+        butterfly.visible = true;
+        particles.visible = false;
+    });
+
+    function formSphereFromButterfly() {
+        if (hasFormedSphere) return;
+
+        hasFormedSphere = true;
+        state = 'formingSphere';
+
+        textTip.innerText = '蝴蝶变成了发光大球，点击它爆炸成爱心';
+
+        const p = butterfly.position;
+
+        particles.visible = true;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            currentPoints[i].x = p.x + (Math.random() - 0.5) * 1.5;
+            currentPoints[i].y = p.y + (Math.random() - 0.5) * 1.5;
+            currentPoints[i].z = p.z + (Math.random() - 0.5) * 1.5;
+
+            gsap.to(currentPoints[i], {
+                x: spherePoints[i].x,
+                y: spherePoints[i].y,
+                z: spherePoints[i].z,
+                duration: 1.8 + Math.random() * 1.2,
+                ease: "power3.out"
+            });
+        }
+
+        gsap.to(butterfly.scale, {
+            x: 0.01,
+            y: 0.01,
+            z: 0.01,
+            duration: 1,
+            ease: "power2.in",
+            onComplete: function () {
+                butterfly.visible = false;
+                state = 'sphere';
+            }
+        });
+
+        gsap.to(bodyMaterial, {
+            opacity: 0,
+            duration: 1
+        });
+
+        gsap.to(wingMaterialLeft, {
+            opacity: 0,
+            duration: 1
+        });
+
+        gsap.to(wingMaterialRight, {
+            opacity: 0,
+            duration: 1
+        });
+    }
+
+    function explodeToShape(targetShape, nextState) {
+        if (state !== 'sphere' && state !== 'heart') return;
+
+        state = 'animating';
+        textTip.style.opacity = '0';
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const explodePower = 1.4 + Math.random() * 1.8;
+
+            gsap.to(currentPoints[i], {
+                x: currentPoints[i].x * explodePower,
+                y: currentPoints[i].y * explodePower,
+                z: currentPoints[i].z * explodePower,
+                duration: 0.35,
+                ease: "power2.out",
+                onComplete: function () {
+                    gsap.to(currentPoints[i], {
+                        x: targetShape[i].x,
+                        y: targetShape[i].y,
+                        z: targetShape[i].z,
+                        duration: 1.6 + Math.random() * 1.5,
+                        ease: "elastic.out(1, 0.42)"
+                    });
+                }
+            });
+        }
+
+        if (nextState === 'heart') {
+            gsap.to(particles.rotation, {
+                x: 0,
+                y: 0,
+                z: 0,
+                duration: 2,
+                ease: "power2.inOut"
+            });
+        }
+
+        setTimeout(function () {
+            state = nextState;
+
+            if (state === 'heart') {
+                textTip.innerText = '再次点击，恢复成发光大球';
+            } else {
+                textTip.innerText = '点击大球，爆炸成爱心';
+            }
+
+            textTip.style.opacity = '1';
+        }, 2300);
+    }
+
+    window.addEventListener('click', function () {
+        if (state === 'sphere') {
+            explodeToShape(heartPoints, 'heart');
+        } else if (state === 'heart') {
+            explodeToShape(spherePoints, 'sphere');
+        }
+    });
+
+    // =========================
+    // 动画循环
+    // =========================
+    function animate() {
+        requestAnimationFrame(animate);
+
+        const now = performance.now();
+        const elapsed = (now - introStartTime) / 1000;
+
+        stars.rotation.y += 0.0008;
+        stars.rotation.x += 0.0003;
+
+        if (state === 'intro') {
+            const pathPoint = getButterflyHeartPath(elapsed);
+
+            butterfly.position.copy(pathPoint);
+
+            const dx = pathPoint.x - previousButterflyPosition.x;
+            const dy = pathPoint.y - previousButterflyPosition.y;
+            const angle = Math.atan2(dy, dx);
+
+            butterfly.rotation.z = angle - Math.PI / 2;
+            butterfly.rotation.y = Math.sin(elapsed * 1.4) * 0.45;
+            butterfly.rotation.x = Math.sin(elapsed * 1.1) * 0.18;
+
+            previousButterflyPosition.copy(pathPoint);
+
+            const flap = Math.sin(elapsed * 18) * 0.65;
+
+            leftWing.rotation.y = 0.75 + flap;
+            rightWing.rotation.y = -0.75 - flap;
+
+            leftWing.rotation.z = 0.25;
+            rightWing.rotation.z = -0.25;
+
+            glow.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.22);
+
+            if (elapsed >= INTRO_SECONDS) {
+                formSphereFromButterfly();
+            }
+        }
+
+        if (particles.visible) {
+            const positionsArray = particleGeometry.attributes.position.array;
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                positionsArray[i * 3] = currentPoints[i].x;
+                positionsArray[i * 3 + 1] = currentPoints[i].y;
+                positionsArray[i * 3 + 2] = currentPoints[i].z;
+            }
+
+            particleGeometry.attributes.position.needsUpdate = true;
+
+            particles.rotation.y += 0.003;
+            particles.rotation.z += 0.001;
+        }
+
+        renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // =========================
+    // 窗口大小适配
+    // =========================
+    window.addEventListener('resize', function () {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+
+</body>
+</html>
